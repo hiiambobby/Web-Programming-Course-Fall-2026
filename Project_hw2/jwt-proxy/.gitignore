@@ -1,0 +1,4 @@
+secrets/*
+!secrets/.gitkeep
+public/jwks.json
+__pycache__/

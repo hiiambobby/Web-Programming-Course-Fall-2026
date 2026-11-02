@@ -1,0 +1,39 @@
+name: jwt-proxy-lab
+
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.39.2
+    ports:
+      - "80:10000"
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./public:/etc/envoy/keys:ro
+    depends_on:
+      - httpbin
+    networks:
+      - frontend
+      - backend
+
+  httpbin:
+    image: ghcr.io/mccutchen/go-httpbin:2.19.0
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8081"
+    networks:
+      - backend
+    # No ports mapping: this backend is not published to the host.
+
+  tools:
+    build: ./tools
+    profiles: [tools]
+    volumes:
+      - ./tools/manage.py:/tools/manage.py:ro
+      - ./secrets:/secrets
+      - ./public:/public
+    networks:
+      - frontend
+
+networks:
+  frontend:
+  backend:
+    internal: true

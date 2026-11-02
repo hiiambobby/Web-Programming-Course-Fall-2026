@@ -1,0 +1,67 @@
+static_resources:
+  listeners:
+    - name: public_http
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 10000
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ingress_http
+                access_log:
+                  - name: envoy.access_loggers.stdout
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+                route_config:
+                  name: backend_routes
+                  virtual_hosts:
+                    - name: legacy_service
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: legacy_httpbin
+                            timeout: 15s
+                http_filters:
+                  # Authentication runs before the router for every path/method.
+                  - name: envoy.filters.http.jwt_authn
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                      providers:
+                        local_issuer:
+                          issuer: https://jwt-proxy.local
+                          audiences: [legacy-httpbin]
+                          require_expiration: true
+                          clock_skew_seconds: 5
+                          from_headers:
+                            - name: Authorization
+                              value_prefix: "Bearer "
+                          local_jwks:
+                            filename: /etc/envoy/keys/jwks.json
+                          forward: false
+                      rules:
+                        - match:
+                            prefix: "/"
+                          requires:
+                            provider_name: local_issuer
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: legacy_httpbin
+      connect_timeout: 3s
+      type: STRICT_DNS
+      dns_lookup_family: V4_ONLY
+      load_assignment:
+        cluster_name: legacy_httpbin
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: httpbin
+                      port_value: 8081
